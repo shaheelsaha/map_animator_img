@@ -1,0 +1,10 @@
+node_modules
+.git
+.DS_Store
+dist
+frames
+*.mp4
+coverage
+.env
+Dockerfile
+.dockerignore

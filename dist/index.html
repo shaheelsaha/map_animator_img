@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<!-- saved from url=(0054)https://chrisboligprojects.pythonanywhere.com/gpuEarth -->
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Vertex Earth Interactive</title>
+
+    <!-- Three.js Import Map (REQUIRED) -->
+
+
+    <!-- Mapbox GL JS -->
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
+
+    <!-- Mapbox Geocoder -->
+    <script
+        src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
+    <link rel="stylesheet"
+        href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css"
+        type="text/css">
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+        }
+
+        /* SEARCH OVERLAY */
+        #search-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .geocoder-container {
+            width: 300px;
+        }
+
+        /* Customize Mapbox Geocoder input */
+        .mapboxgl-ctrl-geocoder {
+            min-width: 100%;
+            background-color: #1a1a1a !important;
+            color: white !important;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: none !important;
+        }
+
+        .mapboxgl-ctrl-geocoder--input {
+            color: white !important;
+            font-family: inherit !important;
+        }
+
+        .mapboxgl-ctrl-geocoder--icon {
+            fill: #aaa !important;
+        }
+
+        button#start-flight-btn {
+            background: linear-gradient(135deg, #007aff, #00d4ff);
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button#start-flight-btn:hover {
+            opacity: 0.9;
+        }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.161/build/three.module.js",
+          "jsm/": "https://cdn.jsdelivr.net/npm/three@0.161/examples/jsm/"
+        }
+      }
+    </script>
+  <script type="module" crossorigin src="/assets/index-Bg7yO4vT.js"></script>
+</head>
+
+<body>
+    <!-- SEARCH UI -->
+    <div id="search-overlay">
+        <label style="color: #aaa; font-size: 12px; margin-bottom: -5px;">START LOCATION</label>
+        <div id="geocoder-start" class="geocoder-container"></div>
+
+        <label style="color: #aaa; font-size: 12px; margin-bottom: -5px; margin-top: 5px;">DESTINATION</label>
+        <div id="geocoder-end" class="geocoder-container"></div>
+
+        <button id="start-flight-btn">FLY ROUTE ✈️</button>
+        <button id="export-btn" style="
+            background: #444; 
+            border: none; 
+            padding: 12px; 
+            border-radius: 6px; 
+            color: white; 
+            font-weight: 600; 
+            cursor: pointer; 
+            margin-top: 10px;
+        ">Export MP4 🎥</button>
+    </div>
+
+    <!-- ERROR HANDLER -->
+    <script>
+        window.onerror = function (message, source, lineno, colno, error) {
+            alert("Global Error: " + message + "\nLine: " + lineno);
+        };
+    </script>
+
+
+    <script>
+        // TOKEN CONFIG
+        // TOKEN CONFIG
+        const MB_TOKEN = 'pk.eyJ1Ijoic2hhaGVlbDU1IiwiYSI6ImNta2Q0cTNqZTA2cGszZ3M2dzVucDdsOGwifQ.WGhIdum-usVYkJJZOfr9UA';
+
+        mapboxgl.accessToken = MB_TOKEN;
+
+        // State to hold selected coordinates
+        let startCoords = null;
+        let endCoords = null;
+
+        // 1. Initialize Start Geocoder
+        const geocoderStart = new MapboxGeocoder({
+            accessToken: mapboxgl.accessToken,
+            types: 'place,locality,neighborhood',
+            placeholder: 'Search Start City...',
+            flyTo: false
+        });
+
+        geocoderStart.addTo('#geocoder-start');
+
+        geocoderStart.on('result', (e) => {
+            console.log('Start Selected:', e.result);
+            startCoords = e.result.center; // [lng, lat]
+        });
+
+        // 2. Initialize End Geocoder
+        const geocoderEnd = new MapboxGeocoder({
+            accessToken: mapboxgl.accessToken,
+            types: 'place,locality,neighborhood',
+            placeholder: 'Search Destination...',
+            flyTo: false
+        });
+
+        geocoderEnd.addTo('#geocoder-end');
+
+        geocoderEnd.on('result', (e) => {
+            console.log('End Selected:', e.result);
+            endCoords = e.result.center; // [lng, lat]
+        });
+
+        // 3. Handle Fly Button
+        document.getElementById('start-flight-btn').addEventListener('click', () => {
+            if (startCoords && endCoords) {
+                console.log('Launching Flight:', startCoords, '->', endCoords);
+
+                // Call global function exposed by newApp.js
+                // Note: Mapbox gives [lng, lat], our function expects (lat, lng) order
+
+                if (window.updateFlight) {
+                    window.updateFlight(
+                        startCoords[1], startCoords[0], // Start Lat, Lng
+                        endCoords[1], endCoords[0]      // End Lat, Lng
+                    );
+                } else {
+                    alert('Flight system implementation pending loading...');
+                }
+            } else {
+                alert('Please select both a Start and End location!');
+            }
+        });
+    </script>
+</body>
+
+</html>

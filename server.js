@@ -3,6 +3,7 @@ import puppeteer from "puppeteer";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import cors from "cors";
+import { exec } from "child_process";
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -16,105 +17,202 @@ app.use(express.static("dist"));
 app.use(cors());
 app.use(express.json());
 
+// 🕒 AUTO-SHUTDOWN LOGIC
+const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+let lastActivity = Date.now();
+
+// Middleware to update activity on every request
+app.use((req, res, next) => {
+    lastActivity = Date.now();
+    next();
+});
+
+// Check for inactivity every minute
+setInterval(() => {
+    const idleTime = Date.now() - lastActivity;
+    if (idleTime > IDLE_TIMEOUT) {
+        console.log("💤 Server idle for 5 minutes. Shutting down VM to save money...");
+        exec("sudo poweroff", (error, stdout, stderr) => {
+            if (error) {
+                console.error(`❌ Shutdown failed: ${error.message}`);
+                return;
+            }
+            console.log(`✅ Shutdown initiated: ${stdout}`);
+        });
+    }
+}, 60 * 1000);
+
+
 app.post("/render", async (req, res) => {
-
     try {
-        const { lat1, lng1, lat2, lng2 } = req.body;
+        const {
+            lat1, lng1, lat2, lng2,
+            resolution = "720p",
+            fps = 30,
+            quality = 80,
+            duration = 10
+        } = req.body;
 
-        console.log("Launching browser...");
+        // 🔍 DEBUG: Check disk space
+        exec("df -h", (err, stdout, stderr) => {
+            console.log("💾 DISK USAGE:\n" + stdout);
+        });
 
-        // Exact configuration for Cloud Run WebGL (SwiftShader)
+        /* -----------------------------
+           Resolution presets
+        ----------------------------- */
+        const sizes = {
+            "480p": { w: 854, h: 480 },
+            "720p": { w: 1280, h: 720 },
+            "1080p": { w: 1920, h: 1080 },
+            "2k": { w: 2560, h: 1440 },
+            "4k": { w: 3840, h: 2160 }
+        };
+
+        const { w, h } = sizes[resolution] || sizes["720p"];
+
+        // frames = fps * duration
+        const frames = Math.floor(fps * duration);
+
+        console.log(`
+🎬 Render settings:
+Resolution: ${resolution} (${w}x${h})
+FPS: ${fps}
+Duration: ${duration}s
+Frames: ${frames}
+JPEG Quality: ${quality}
+`);
+
+        /* -----------------------------
+           Launch browser
+        ----------------------------- */
         const browser = await puppeteer.launch({
             headless: "new",
-            // Use the installed chrome from Dockerfile
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/google-chrome",
+            executablePath:
+                process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/google-chrome",
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-
-                // ⭐ Cloud Run WebGL fix
                 "--use-gl=swiftshader",
                 "--use-angle=swiftshader",
                 "--disable-gpu",
-
-                "--disable-dev-shm-usage",
-                "--single-process",
-                "--no-zygote"
+                "--disable-dev-shm-usage"
             ]
         });
+
         const page = await browser.newPage();
 
-        // Improve debugging: forward browser console logs to server logs
-        page.on('console', msg => console.log('BROWSER LOG:', msg.text()));
-        page.on('pageerror', err => console.log('BROWSER ERROR:', err.toString()));
-
-        // Point to our own server (served via express static)
-        const targetUrl = `http://localhost:${port}`;
-        console.log(`Navigating to ${targetUrl}...`);
-
-        // Optimize loading: wait for network idle to ensure textures are loaded
-        // Optimize loading: Mapbox loads tiles endlessly, so 'networkidle0' times out.
-        // We use 'domcontentloaded' and rely on the explicit waitForFunction below.
-        await page.goto(targetUrl, {
-            timeout: 120000,
-            waitUntil: 'domcontentloaded'
+        /* ⭐ IMPORTANT: set resolution */
+        await page.setViewport({
+            width: w,
+            height: h,
+            deviceScaleFactor: 1
         });
 
-        // Explicitly wait for our app to be ready (bumping timeout for slow software WebGL)
-        await page.waitForFunction('!!window.updateFlight', { timeout: 120000 });
+        page.on("console", msg => console.log("BROWSER:", msg.text()));
+
+        // Point to our own server
+        const targetUrl = `http://localhost:${port}`;
+        console.log(`🌍 Navigating to ${targetUrl}...`);
+
+        try {
+            // "networkidle0" is too strict for Mapbox (which loads tiles forever)
+            // Use "domcontentloaded" and then wait for our specific function
+            await page.goto(targetUrl, {
+                timeout: 300000,
+                waitUntil: "domcontentloaded"
+            });
+            console.log("✅ Page content loaded");
+        } catch (e) {
+            console.error("❌ Page load failed:", e);
+            throw e;
+        }
+
+        console.log("⏳ Waiting for updateFlight...");
+        // Wait for function to be exposed
+        await page.waitForFunction("!!window.updateFlight", { timeout: 300000 });
+
+        // Wait a bit more for map style to fully load (optional but safer)
+        await new Promise(r => setTimeout(r, 5000));
+        console.log("✅ updateFlight found & ready");
 
         await page.evaluate((a, b, c, d) => {
-            if (window.updateFlight) {
-                window.updateFlight(a, b, c, d);
-            }
+            console.log("🚀 Triggering updateFlight inside browser");
+            window.updateFlight(a, b, c, d);
         }, lat1, lng1, lat2, lng2);
 
-        const frames = 600;
+        /* -----------------------------
+           Frame folder 
+        ----------------------------- */
         const framesDir = "frames";
 
         if (!fs.existsSync(framesDir)) fs.mkdirSync(framesDir);
         else {
-            // clean up old frames
             try {
                 fs.readdirSync(framesDir).forEach(f => fs.unlinkSync(`${framesDir}/${f}`));
-            } catch (e) { console.log("cleanup error", e); }
+            } catch (e) { }
         }
 
-        console.log("Starting render...");
+        console.log("🎥 Rendering frames...");
 
+        /* -----------------------------
+           Render frames (JPEG FAST)
+        ----------------------------- */
         for (let i = 0; i < frames; i++) {
 
-            await page.evaluate((f) => {
-                if (window.seekFrame) window.seekFrame(f, 600);
-            }, i);
+            await page.evaluate((f, total) => {
+                if (window.seekFrame) window.seekFrame(f, total);
+            }, i, frames);
 
             await page.screenshot({
-                path: `${framesDir}/${String(i).padStart(4, "0")}.png`
+                path: `${framesDir}/${String(i).padStart(4, "0")}.jpg`,
+                type: "jpeg",
+                quality,
+                clip: { x: 0, y: 0, width: w, height: h }
             });
 
-            if (i % 50 === 0) console.log(`Rendered frame ${i}/${frames}`);
+            if (i % 20 === 0) console.log(`Frame ${i}/${frames}`);
         }
 
         await browser.close();
 
-        console.log("Encoding video...");
+        /* -----------------------------
+           Encode video
+        ----------------------------- */
+        console.log("🎞 Encoding video...");
+        const outputName = "output.mp4";
 
-        ffmpeg(`${framesDir}/%04d.png`)
-            .fps(60)
-            .output("output.mp4")
+        ffmpeg(`${framesDir}/%04d.jpg`)
+            .fps(fps)
+            .videoCodec("libx264")
+            .outputOptions([
+                "-pix_fmt yuv420p",
+                "-preset ultrafast",
+                "-crf 20",
+                "-movflags +faststart"
+            ])
+            .output(outputName)
             .on("end", () => {
-                console.log("Video complete!");
-                res.download("output.mp4");
+                console.log("✅ Done!");
+                res.download(outputName, () => {
+                    // Cleanup frames after download
+                    try {
+                        fs.rmSync(framesDir, { recursive: true, force: true });
+                        console.log("🧹 Cleaned up frames");
+                    } catch (e) {
+                        console.error("Cleanup failed:", e);
+                    }
+                });
             })
-            .on("error", (err) => {
-                console.error("FFmpeg error:", err);
+            .on("error", err => {
+                console.error(err);
                 res.status(500).send("Encoding failed");
             })
             .run();
 
-    } catch (error) {
-        console.error("Render error:", error);
-        res.status(500).send("Render failed: " + error.message);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Render failed: " + err.message);
     }
 });
 

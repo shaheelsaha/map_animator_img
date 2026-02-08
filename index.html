@@ -91,6 +91,7 @@
             opacity: 0.9;
         }
     </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
@@ -103,7 +104,7 @@
         <div id="geocoder-end" class="geocoder-container"></div>
 
         <button id="start-flight-btn">FLY ROUTE ✈️</button>
-        <button id="export-btn" style="
+        <button id="open-export-btn" style="
             background: #444; 
             border: none; 
             padding: 12px; 
@@ -112,7 +113,36 @@
             font-weight: 600; 
             cursor: pointer; 
             margin-top: 10px;
-        ">Export MP4 🎥</button>
+        ">Export Video 🎥</button>
+    </div>
+
+    <!-- EXPORT MODAL -->
+    <div id="export-modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Export Settings</h2>
+
+            <label>Resolution</label>
+            <select id="export-resolution">
+                <option value="480p">480p (Fastest)</option>
+                <option value="720p" selected>720p (HD)</option>
+                <option value="1080p">1080p (Full HD)</option>
+                <option value="2k">2k (QHD)</option>
+                <option value="4k">4k (UHD)</option>
+            </select>
+
+            <label>Frame Rate</label>
+            <select id="export-fps">
+                <option value="25">25 fps (Cinematic)</option>
+                <option value="30" selected>30 fps (Standard)</option>
+                <option value="60">60 fps (Smooth)</option>
+            </select>
+
+            <div class="modal-buttons">
+                <button id="cancel-export-btn" class="secondary">Cancel</button>
+                <button id="confirm-export-btn" class="primary">Start Export 🚀</button>
+            </div>
+            <p id="export-status" style="font-size: 12px; color: #aaa; margin-top: 10px;"></p>
+        </div>
     </div>
 
     <!-- ERROR HANDLER -->
@@ -148,6 +178,8 @@
         geocoderStart.on('result', (e) => {
             console.log('Start Selected:', e.result);
             startCoords = e.result.center; // [lng, lat]
+            // Store globally for export
+            window.startCoords = startCoords;
         });
 
         // 2. Initialize End Geocoder
@@ -163,6 +195,8 @@
         geocoderEnd.on('result', (e) => {
             console.log('End Selected:', e.result);
             endCoords = e.result.center; // [lng, lat]
+            // Store globally for export
+            window.endCoords = endCoords;
         });
 
         // 3. Handle Fly Button

@@ -273,63 +273,123 @@ window.seekFrame = function (frame, totalFrames = 600) {
     renderer.render(scene, camera);
 };
 
-// 🟢 STEP 2 — Add button click handler
-document.getElementById("export-btn").onclick = async () => {
+// 🟢 STEP 2 — Modal Export Logic
+// Wait for DOM to be sure
+document.addEventListener("DOMContentLoaded", () => {
+    // We also check if elements exist immediately in case DOMContentLoaded already fired (though in module it shouldn't matter)
+    initExportModal();
+});
 
-    // 1. Validation: Ensure flight has happened
-    if (window.lastLat1 === undefined || window.lastLat2 === undefined) {
-        alert("Please fly a route first! ✈️\nSelect Start/End and click 'FLY ROUTE'.");
+function initExportModal() {
+    console.log("Initializing Export Modal...");
+    const modal = document.getElementById("export-modal");
+    const openBtn = document.getElementById("open-export-btn");
+    const cancelBtn = document.getElementById("cancel-export-btn");
+    const confirmBtn = document.getElementById("confirm-export-btn");
+    const statusText = document.getElementById("export-status");
+
+    if (!modal || !openBtn || !cancelBtn || !confirmBtn) {
+        console.error("❌ Export Modal Elements missing!", { modal, openBtn, cancelBtn, confirmBtn });
         return;
     }
 
-    const btn = document.getElementById("export-btn");
-    const originalText = btn.innerText;
+    // Open Modal
+    openBtn.onclick = () => {
+        console.log("Open Export Clicked");
+        // Validation - check geocoder coords OR flight coords
+        const hasFlightCoords = window.lastLat1 !== undefined && window.lastLat2 !== undefined;
+        const hasGeocoderCoords = window.startCoords && window.endCoords;
 
-    try {
-        // 2. Loading State
-        btn.innerText = "⏳ Rendering... (Wait ~2-3m)";
-        btn.disabled = true;
-        btn.style.opacity = "0.7";
-        btn.style.cursor = "wait";
-
-        // Use absolute Cloud Run URL because Firebase Hosting is a different domain
-        const res = await fetch("https://vertex-earth-interactive-1040214381071.us-central1.run.app/render", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                lat1: window.lastLat1,
-                lng1: window.lastLng1,
-                lat2: window.lastLat2,
-                lng2: window.lastLng2
-            })
-        });
-
-        if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Server Error (${res.status}): ${errText}`);
+        if (!hasFlightCoords && !hasGeocoderCoords) {
+            console.warn("No coordinates available");
+            alert("Please select Start and Destination locations first! 📍");
+            return;
         }
+        modal.style.display = "flex";
+        statusText.innerText = "";
+    };
 
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
+    // Close Modal
+    cancelBtn.onclick = () => {
+        modal.style.display = "none";
+    };
 
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "flight.mp4";
-        a.click();
+    // Confirm Export
+    confirmBtn.onclick = async () => {
+        const resolution = document.getElementById("export-resolution").value;
+        const fps = parseInt(document.getElementById("export-fps").value);
 
-        btn.innerText = "✅ Done! Save again?";
+        // Use flight coords if available, otherwise use geocoder coords
+        // Geocoder stores [lng, lat], we need (lat, lng)
+        const lat1 = window.lastLat1 ?? (window.startCoords ? window.startCoords[1] : null);
+        const lng1 = window.lastLng1 ?? (window.startCoords ? window.startCoords[0] : null);
+        const lat2 = window.lastLat2 ?? (window.endCoords ? window.endCoords[1] : null);
+        const lng2 = window.lastLng2 ?? (window.endCoords ? window.endCoords[0] : null);
 
-    } catch (error) {
-        console.error("Export failed:", error);
-        alert("Export Failed!\nCheck console for details.\n\n" + error.message);
-        btn.innerText = "❌ Error (Try Again)";
-    } finally {
-        // 3. Restore State
-        setTimeout(() => {
-            btn.disabled = false;
-            btn.style.opacity = "1";
-            btn.style.cursor = "pointer";
-            if (btn.innerText.includes("Error")) btn.innerText = originalText;
-        }, 5000);
-    }
-};
+        // Lock UI
+        confirmBtn.disabled = true;
+        cancelBtn.disabled = true;
+        confirmBtn.innerText = "Rendering... ⏳";
+        statusText.innerText = `Generating ${resolution} video at ${fps}fps. Please wait...`;
+
+        try {
+            // 🌍 GATEWAY URL (Cloud Run)
+            const GATEWAY_URL = "https://vertex-gateway-1040214381071.us-central1.run.app";
+
+            console.log(`🚀 Sending request to: ${GATEWAY_URL}/render`);
+
+            const res = await fetch(`${GATEWAY_URL}/render`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    lat1: lat1,
+                    lng1: lng1,
+                    lat2: lat2,
+                    lng2: lng2,
+                    resolution: resolution,
+                    fps: fps,
+                    quality: 80,
+                    duration: 10
+                })
+            });
+
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Server Error (${res.status}): ${errText}`);
+            }
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `flight_${resolution}_${fps}fps.mp4`;
+            a.click();
+
+            statusText.innerText = "✅ Done! Downloading...";
+            statusText.style.color = "#4caf50";
+
+            setTimeout(() => {
+                modal.style.display = "none";
+                statusText.innerText = "";
+                statusText.style.color = "#aaa";
+            }, 2000);
+
+        } catch (error) {
+            console.error("Export failed:", error);
+            statusText.innerText = "❌ Error: " + error.message;
+            statusText.style.color = "#f44336";
+        } finally {
+            // Restore UI
+            confirmBtn.disabled = false;
+            cancelBtn.disabled = false;
+            confirmBtn.innerText = "Start Export 🚀";
+        }
+    };
+
+    // Auto-init call just in case
+    console.log("Export Modal Initialized");
+}
+
+// Call it immediately just in case (modules defer, so element likely exists)
+initExportModal();

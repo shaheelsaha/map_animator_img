@@ -31,64 +31,13 @@
         type="text/css">
 
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            font-family: 'Inter', sans-serif;
-            background-color: #000;
+        /* Specific Z-Indexing for stacking context stability */
+        #geocoder-start .mapboxgl-ctrl-geocoder {
+            z-index: 20;
         }
 
-        /* SEARCH OVERLAY */
-        #search-overlay {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 100;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-        }
-
-        .geocoder-container {
-            width: 300px;
-        }
-
-        /* Customize Mapbox Geocoder input */
-        .mapboxgl-ctrl-geocoder {
-            min-width: 100%;
-            background-color: #1a1a1a !important;
-            color: white !important;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: none !important;
-        }
-
-        .mapboxgl-ctrl-geocoder--input {
-            color: white !important;
-            font-family: inherit !important;
-        }
-
-        .mapboxgl-ctrl-geocoder--icon {
-            fill: #aaa !important;
-        }
-
-        button#start-flight-btn {
-            background: linear-gradient(135deg, #007aff, #00d4ff);
-            border: none;
-            padding: 12px;
-            border-radius: 6px;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-
-        button#start-flight-btn:hover {
-            opacity: 0.9;
+        #geocoder-end .mapboxgl-ctrl-geocoder {
+            z-index: 10;
         }
     </style>
     <link rel="stylesheet" href="style.css">
@@ -97,23 +46,24 @@
 <body>
     <!-- SEARCH UI -->
     <div id="search-overlay">
-        <label style="color: #aaa; font-size: 12px; margin-bottom: -5px;">START LOCATION</label>
-        <div id="geocoder-start" class="geocoder-container"></div>
+        <label>START LOCATION</label>
+        <div class="timeline-step">
+            <div id="geocoder-start" class="geocoder-container"></div>
+            <!-- Start Connector (JS) -->
+        </div>
 
-        <label style="color: #aaa; font-size: 12px; margin-bottom: -5px; margin-top: 5px;">DESTINATION</label>
-        <div id="geocoder-end" class="geocoder-container"></div>
+        <div id="stops-container" style="display: flex; flex-direction: column; gap: 0px; margin-bottom: 20px;">
+            <!-- Dynamic stops will be added here -->
+        </div>
 
-        <button id="start-flight-btn">FLY ROUTE ✈️</button>
-        <button id="open-export-btn" style="
-            background: #444; 
-            border: none; 
-            padding: 12px; 
-            border-radius: 6px; 
-            color: white; 
-            font-weight: 600; 
-            cursor: pointer; 
-            margin-top: 10px;
-        ">Export Video 🎥</button>
+        <button id="add-stop-btn" class="action-btn secondary-btn" style="margin-bottom: 24px;">+ Add Stop</button>
+
+        <div id="route-stats"
+            style="color: #888; font-size: 13px; margin-top: 4px; font-weight: 500; text-align: center;"></div>
+
+        <!-- Action Buttons -->
+        <button id="start-flight-btn" class="action-btn">FLY ROUTE ✈️</button>
+        <button id="open-export-btn" class="action-btn">Export Video 🎥</button>
     </div>
 
     <!-- EXPORT MODAL -->
@@ -156,14 +106,25 @@
 
     <script>
         // TOKEN CONFIG
-        // TOKEN CONFIG
-        const MB_TOKEN = '%VITE_MAPBOX_TOKEN%';
-
+        const MB_TOKEN = 'pk.eyJ1Ijoic2hhaGVlbDU1IiwiYSI6ImNta2Q0cTNqZTA2cGszZ3M2dzVucDdsOGwifQ.WGhIdum-usVYkJJZOfr9UA';
         mapboxgl.accessToken = MB_TOKEN;
+        // Helper to create mode selector (Pill Style)
+        function createModeSelector(id) {
+            const container = document.createElement('div');
+            container.className = 'timeline-connector';
 
-        // State to hold selected coordinates
-        let startCoords = null;
-        let endCoords = null;
+            const select = document.createElement('select');
+            select.id = `mode-${id}`;
+            select.className = 'mode-select-pill';
+            select.innerHTML = `
+                <option value="flight">✈️ Flight</option>
+                <option value="car">🚗 Car</option>
+                <option value="train">🚂 Train</option>
+            `;
+
+            container.appendChild(select);
+            return container;
+        }
 
         // 1. Initialize Start Geocoder
         const geocoderStart = new MapboxGeocoder({
@@ -174,6 +135,21 @@
         });
 
         geocoderStart.addTo('#geocoder-start');
+        // Add mode selector (connector) to Start container
+        // We need to append it to the parent .timeline-step, not inside the geocoder itself to span the gap
+        const startStep = document.getElementById('geocoder-start').parentElement;
+        startStep.appendChild(createModeSelector('start'));
+
+        // Fix Z-Index for Start
+        const startContainer = document.getElementById('geocoder-start');
+        startContainer.addEventListener('focusin', () => {
+            startContainer.classList.add('active-z');
+        });
+        startContainer.addEventListener('focusout', () => {
+            setTimeout(() => {
+                startContainer.classList.remove('active-z');
+            }, 200);
+        });
 
         geocoderStart.on('result', (e) => {
             console.log('Start Selected:', e.result);
@@ -182,41 +158,133 @@
             window.startCoords = startCoords;
         });
 
-        // 2. Initialize End Geocoder
-        const geocoderEnd = new MapboxGeocoder({
-            accessToken: mapboxgl.accessToken,
-            types: 'place,locality,neighborhood',
-            placeholder: 'Search Destination...',
-            flyTo: false
-        });
+        // 2. (Destination removed - last stop is the destination)
 
-        geocoderEnd.addTo('#geocoder-end');
+        // 3. Handle Add Stop Button
+        const stopsContainer = document.getElementById('stops-container');
+        const stopData = {}; // Object to store data by ID
+        let stopCounter = 0; // Always incrementing counter for unique IDs
 
-        geocoderEnd.on('result', (e) => {
-            console.log('End Selected:', e.result);
-            endCoords = e.result.center; // [lng, lat]
-            // Store globally for export
-            window.endCoords = endCoords;
-        });
+        document.getElementById('add-stop-btn').addEventListener('click', () => {
+            const currentId = stopCounter++;
+            const stopId = `stop-${currentId}`;
+            const stopDiv = document.createElement('div');
+            stopDiv.className = 'geocoder-container timeline-step';
+            stopDiv.id = stopId;
+            stopDiv.style.marginBottom = '20px';
+            stopsContainer.appendChild(stopDiv);
 
-        // 3. Handle Fly Button
-        document.getElementById('start-flight-btn').addEventListener('click', () => {
-            if (startCoords && endCoords) {
-                console.log('Launching Flight:', startCoords, '->', endCoords);
+            const geocoderStop = new MapboxGeocoder({
+                accessToken: mapboxgl.accessToken,
+                types: 'place,locality,neighborhood',
+                placeholder: `Stop ${currentId + 1}...`,
+                flyTo: false
+            });
 
-                // Call global function exposed by newApp.js
-                // Note: Mapbox gives [lng, lat], our function expects (lat, lng) order
+            geocoderStop.addTo(`#${stopId}`);
 
-                if (window.updateFlight) {
-                    window.updateFlight(
-                        startCoords[1], startCoords[0], // Start Lat, Lng
-                        endCoords[1], endCoords[0]      // End Lat, Lng
-                    );
-                } else {
-                    alert('Flight system implementation pending loading...');
-                }
+            // Add connector to previous step (either Start or Last Stop)
+            if (currentId === 0) {
+                // First stop - no connector needed from Start (it already has one)
             } else {
-                alert('Please select both a Start and End location!');
+                // Add connector to previous stop
+                const prevStopId = `stop-${currentId - 1}`;
+                const prevStopDiv = document.getElementById(prevStopId);
+                if (prevStopDiv && !prevStopDiv.querySelector('.timeline-connector')) {
+                    prevStopDiv.appendChild(createModeSelector(`${currentId - 1}`));
+                }
+            }
+
+            // Fix Z-Index issue on suggestion click
+            // When clicking a suggestion, focus is lost, so :focus-within fails
+            // We need to keep z-index high for a moment to allow click to register
+            const container = document.getElementById(stopId);
+            container.addEventListener('focusin', () => {
+                container.classList.add('active-z');
+            });
+            container.addEventListener('focusout', () => {
+                setTimeout(() => {
+                    container.classList.remove('active-z');
+                }, 200);
+            });
+
+            geocoderStop.on('result', (e) => {
+                console.log(`Stop ${currentId} Selected:`, e.result);
+                if (!stopData[currentId]) stopData[currentId] = {};
+                stopData[currentId].coords = e.result.center;
+            });
+
+            geocoderStop.on('clear', () => {
+                console.log(`Stop ${currentId} Cleared`);
+                delete stopData[currentId];
+            });
+        });
+
+        // 4. Handle Fly Button
+        document.getElementById('start-flight-btn').addEventListener('click', () => {
+            // Collect all stops
+            const activeStops = [];
+            for (let i = 0; i < stopCounter; i++) {
+                if (stopData[i] && stopData[i].coords) {
+                    // Get mode for this stop (the connector AFTER this stop)
+                    const modeEl = document.getElementById(`mode-${i}`);
+                    const mode = modeEl ? modeEl.value : 'flight';
+                    activeStops.push({
+                        coords: stopData[i].coords,
+                        mode: mode
+                    });
+                }
+            }
+
+            // Validate: need at least Start + 1 Stop
+            if (!startCoords) {
+                alert('Please select a Start location!');
+                return;
+            }
+            if (activeStops.length === 0) {
+                alert('Please add at least one stop!');
+                return;
+            }
+
+            // Get Start Mode (the connector from Start to first Stop)
+            const startMode = document.getElementById('mode-start').value;
+
+            // Build route: Start -> Stop1 -> Stop2 -> ... -> LastStop (destination)
+            // Each point has the mode for traveling TO the NEXT point
+            // Last point has no outgoing mode (it's the destination)
+            const routePoints = [
+                { coords: startCoords, mode: startMode }
+            ];
+
+            // Add all stops except the last one with their modes
+            for (let i = 0; i < activeStops.length - 1; i++) {
+                routePoints.push({
+                    coords: activeStops[i].coords,
+                    mode: activeStops[i].mode
+                });
+            }
+
+            // Add last stop as destination (no outgoing mode)
+            const lastStop = activeStops[activeStops.length - 1];
+            routePoints.push({
+                coords: lastStop.coords,
+                mode: null
+            });
+
+            // Store for export functionality
+            window.lastStopCoords = lastStop.coords;
+
+            // Convert to (lat, lng) expected by newApp logic
+            const formattedRoute = routePoints.map(p => ({
+                lat: p.coords[1],
+                lng: p.coords[0],
+                mode: p.mode
+            }));
+
+            if (window.updateFlight) {
+                window.updateFlight(formattedRoute);
+            } else {
+                alert('Flight system not loaded yet. Please wait and try again.');
             }
         });
     </script>

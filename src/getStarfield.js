@@ -35,8 +35,8 @@ export default function getStarfield({ numStars = 500, sprite } = {}) {
   const mat = new THREE.PointsMaterial({
     size: 0.2,
     vertexColors: true,
-    map: sprite,
   });
+  if (sprite) mat.map = sprite;
   const points = new THREE.Points(geo, mat);
   return points;
 }

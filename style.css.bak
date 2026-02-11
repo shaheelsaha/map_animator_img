@@ -1,0 +1,358 @@
+body {
+    margin: 0;
+    background-color: black;
+    font-family: 'Inter', sans-serif;
+    color: white;
+    overflow: hidden;
+}
+
+/* Fix Geocoder Dropdown Stacking */
+#geocoder-start .mapboxgl-ctrl-geocoder {
+    z-index: 10;
+}
+
+#geocoder-start .suggestions-wrapper {
+    z-index: 1000 !important;
+}
+
+#geocoder-end .mapboxgl-ctrl-geocoder {
+    z-index: 5;
+}
+
+#geocoder-end .suggestions-wrapper {
+    z-index: 999 !important;
+}
+
+/* Ensure focused geocoder renders above siblings */
+.geocoder-container {
+    position: relative;
+    z-index: 1;
+    transition: z-index 0.1s;
+}
+
+.geocoder-container:focus-within,
+.geocoder-container.active-z {
+    z-index: 100 !important;
+}
+
+#ui-container {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: 320px;
+    background: rgba(20, 20, 20, 0.9);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+}
+
+h1 {
+    font-size: 24px;
+    margin: 0 0 20px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+}
+
+input {
+    background: rgba(50, 50, 50, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+input:focus {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(60, 60, 60, 0.8);
+}
+
+.connector {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: -15px 0;
+    z-index: 10;
+}
+
+.connector span {
+    background: #333;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.button-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.btn {
+    border: none;
+    border-radius: 12px;
+    padding: 12px 8px;
+    /* Reduced padding to fit 4 buttons */
+    color: white;
+    font-size: 11px;
+    /* Smaller font to fit text */
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+    transition: transform 0.1s;
+    height: 80px;
+}
+
+.btn:active {
+    transform: scale(0.95);
+}
+
+.btn-add {
+    background: #2a2a2a;
+    color: #fff;
+}
+
+.btn-preview {
+    background: #ffc107;
+    /* Yellow/Orange */
+    color: #000;
+}
+
+.btn-record {
+    background: #ff5252;
+    /* Red */
+    color: white;
+}
+
+.btn-cloud {
+    background: #448aff;
+    /* Blue */
+    color: white;
+}
+
+.icon {
+    font-size: 18px;
+    display: block;
+}
+
+/* Export Modal Styles - Premium Look */
+#export-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 99999;
+    /* Ensuring extremely high z-index */
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    perspective: 1000px;
+}
+
+#export-modal[style*="display: flex"] {
+    opacity: 1;
+}
+
+@keyframes modalPop {
+    0% {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.modal-content {
+    background: rgba(28, 28, 30, 0.85);
+    /* Darker, sleek background */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 32px;
+    border-radius: 24px;
+    width: 340px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow:
+        0 20px 60px -10px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 255, 255, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    /* Inner highlight */
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    animation: modalPop 0.5s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Subtle gradient glow at the top */
+.modal-content::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+}
+
+.modal-content h2 {
+    margin: 0;
+    font-size: 22px;
+    color: #fff;
+    text-align: center;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    background: linear-gradient(180deg, #fff, #ccc);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 2px 10px rgba(255, 255, 255, 0.1);
+}
+
+.modal-content label {
+    font-size: 11px;
+    color: #8e8e93;
+    margin-bottom: -12px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+.select-wrapper {
+    position: relative;
+}
+
+/* Custom arrow for select */
+.select-wrapper::after {
+    content: '▼';
+    font-size: 10px;
+    color: #888;
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.modal-content select {
+    width: 100%;
+    background: rgba(44, 44, 46, 0.8);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 14px 16px;
+    border-radius: 14px;
+    font-size: 15px;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    /* Hide default arrow */
+    -webkit-appearance: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: inherit;
+}
+
+.modal-content select:hover {
+    background: rgba(58, 58, 60, 0.9);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.modal-content select:focus {
+    background: rgba(44, 44, 46, 1);
+    border-color: #0a84ff;
+    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.3);
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.modal-buttons button {
+    flex: 1;
+    padding: 14px;
+    border-radius: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    font-size: 14px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-tap-highlight-color: transparent;
+}
+
+.modal-buttons button:active {
+    transform: scale(0.96);
+}
+
+/* Primary confirm button */
+.modal-buttons button.primary {
+    background: #0a84ff;
+    color: white;
+    box-shadow: 0 4px 12px rgba(10, 132, 255, 0.3);
+}
+
+/* Shiny gradient effect on confirm button */
+.modal-buttons button.primary::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(rgba(255, 255, 255, 0.15), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.modal-buttons button.primary:hover {
+    background: #007aff;
+    box-shadow: 0 6px 16px rgba(10, 132, 255, 0.4);
+    transform: translateY(-1px);
+}
+
+.modal-buttons button.primary:hover::after {
+    opacity: 1;
+}
+
+/* Secondary cancel button */
+.modal-buttons button.secondary {
+    background: rgba(58, 58, 60, 0.6);
+    color: #e5e5e7;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.modal-buttons button.secondary:hover {
+    background: rgba(72, 72, 74, 0.8);
+    color: white;
+}

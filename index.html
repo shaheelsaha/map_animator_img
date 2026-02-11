@@ -154,8 +154,15 @@
         geocoderStart.on('result', (e) => {
             console.log('Start Selected:', e.result);
             startCoords = e.result.center; // [lng, lat]
+
             // Store globally for export
             window.startCoords = startCoords;
+
+            // Add Marker
+            if (window.addMapMarker) {
+                // window.clearMapMarkers(); // Optional: Clear previous if only single route focused
+                window.addMapMarker(startCoords[1], startCoords[0], 'start');
+            }
         });
 
         // 2. (Destination removed - last stop is the destination)
@@ -212,6 +219,11 @@
                 console.log(`Stop ${currentId} Selected:`, e.result);
                 if (!stopData[currentId]) stopData[currentId] = {};
                 stopData[currentId].coords = e.result.center;
+
+                // Add Marker
+                if (window.addMapMarker) {
+                    window.addMapMarker(e.result.center[1], e.result.center[0], 'stop');
+                }
             });
 
             geocoderStop.on('clear', () => {

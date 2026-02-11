@@ -14,6 +14,7 @@ export function createCameraController(camera, controls) {
 
     let introTarget = null;
     let outroTarget = null;
+    let flyTarget = null;
 
     const SETTINGS = {
         smooth: 0.08,
@@ -135,6 +136,35 @@ export function createCameraController(camera, controls) {
         }
 
         // ======================
+        // FLY TO (Simple Rotation)
+        // ======================
+        else if (mode === "flyTo" && flyTarget) {
+            progress += 0.03; // Faster than intro
+
+            const from = camera.position.clone().normalize();
+            const to = latLngToVector3(flyTarget[1], flyTarget[0], 1).normalize();
+
+            const qStart = new THREE.Quaternion().setFromUnitVectors(
+                new THREE.Vector3(0, 0, 1), from
+            );
+            const qEnd = new THREE.Quaternion().setFromUnitVectors(
+                new THREE.Vector3(0, 0, 1), to
+            );
+
+            const q = qStart.clone().slerp(qEnd, progress);
+            const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+
+            // Maintain current distance or set to a standard viewing height
+            // Let's use a nice viewing height
+            target = dir.multiplyScalar(3.5);
+
+            if (progress >= 1) {
+                running = false;
+                mode = "idle";
+            }
+        }
+
+        // ======================
         // APPLY CAMERA
         // ======================
         if (target) {
@@ -203,9 +233,21 @@ export function createCameraController(camera, controls) {
         mode = "outro";
     }
 
+    function flyTo(targetLngLat) {
+        flyTarget = targetLngLat;
+        progress = 0;
+        mode = "flyTo";
+
+        if (!running) {
+            running = true;
+            requestAnimationFrame(update);
+        }
+    }
+
     return {
         playIntro,
         startFollow,
-        playOutro
+        playOutro,
+        flyTo
     };
 }

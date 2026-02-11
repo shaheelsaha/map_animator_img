@@ -22,6 +22,7 @@ RUN apt-get update \
     libgl1 \
     libegl1 \
     libgles2 \
+    libvulkan1 \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 

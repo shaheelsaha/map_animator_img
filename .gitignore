@@ -4,3 +4,6 @@ dist
 frames
 *.mp4
 .DS_Store
+app.tar.gz
+debug-startup.sh
+debug-startup-v2.sh

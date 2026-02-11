@@ -7,6 +7,8 @@ import { createCarTransport } from "./src/transports/car.js";
 import { createTrainTransport } from "./src/transports/train.js";
 import earthImg from "./src/assets/earth-blue-marble.jpg";
 import getStarfield from "./src/getStarfield.js";
+import { createPulseMarker } from "./src/marker.js";
+
 
 // ==========================
 // 1. SCENE & RENDERER SETUP
@@ -159,12 +161,30 @@ function initExportModal() {
         statusText.innerText = `Generating ${resolution} video at ${fps}fps...`;
 
         try {
-            const GATEWAY_URL = "https://vertex-gateway-1040214381071.us-central1.run.app";
-            const res = await fetch(`${GATEWAY_URL}/render`, {
+            // 1. Send Request to Cloud Gateway (Handles Wake-up + Proxy)
+            statusText.innerText = "Connecting to cloud fleet (may take ~60s if sleeping)... 🚀";
+            const GATEWAY = "https://vertex-gateway-1040214381071.us-central1.run.app";
+
+            // Construct route points from flightSegments
+            const routePoints = [];
+            if (flightSegments.length > 0) {
+                routePoints.push(flightSegments[0].startCoords);
+                flightSegments.forEach(seg => routePoints.push(seg.endCoords));
+            } else {
+                // Fallback if no segments yet (shouldn't happen if validation passes)
+                routePoints.push({ lat: lat1, lng: lng1, mode: 'flight' });
+                routePoints.push({ lat: lat2, lng: lng2, mode: 'flight' });
+            }
+
+            const res = await fetch(`${GATEWAY}/render`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": import.meta.env.VITE_API_KEY // 🔒 Secure Key
+                },
                 body: JSON.stringify({
-                    lat1, lng1, lat2, lng2,
+                    routePoints,
+                    lat1, lng1, lat2, lng2, // Keep for backward compat
                     resolution, fps,
                     quality: 80, duration: 10
                 })
@@ -252,6 +272,9 @@ window.updateFlight = async function (routePoints) {
 
         const points = curve.getPoints(mode === 'flight' ? 50 : 200);
         const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+        // Start invisible
+        lineGeo.setDrawRange(0, 0);
+
         const lineMat = new THREE.LineBasicMaterial({ color: transport.getColor() });
         const line = new THREE.Line(lineGeo, lineMat);
         scene.add(line);
@@ -322,6 +345,30 @@ window.seekFrame = function (frame, totalFrames = 600) {
 // ANIMATION LOOP
 // ==========================
 
+const markers = []; // Track active markers
+
+window.addMapMarker = function (lat, lng, type = 'start') {
+    // Update Markers
+    const color = type === 'start' ? 0x00ff00 : (type === 'stop' ? 0xffaa00 : 0xff0000);
+    const marker = createPulseMarker(scene, lat, lng, color);
+    markers.push(marker);
+    console.log(`📍 Marker added at ${lat}, ${lng} (${type})`);
+
+    // Focus Camera on Marker
+    window.focusOnLocation(lat, lng);
+};
+
+window.focusOnLocation = function (lat, lng) {
+    if (cameraController && cameraController.flyTo) {
+        cameraController.flyTo([lng, lat]);
+    }
+};
+
+window.clearMapMarkers = function () {
+    markers.forEach(m => m.remove());
+    markers.length = 0;
+};
+
 function animate() {
     requestAnimationFrame(animate);
 
@@ -337,6 +384,7 @@ function animate() {
                 t = 1;
                 const last = flightSegments[flightSegments.length - 1];
                 cameraController.playOutro([last.endCoords.lng, last.endCoords.lat]);
+
             }
         }
     }
@@ -350,8 +398,18 @@ function animate() {
             Object.values(transports).forEach(tr => tr.sprite.visible = false);
             transport.sprite.visible = true;
             transport.sprite.position.copy(point.normalize().multiplyScalar(1.03));
+
+            // Updates line draw range
+            if (seg.line && seg.line.geometry) {
+                const totalPoints = seg.line.geometry.attributes.position.count;
+                const drawCount = Math.floor(t * totalPoints);
+                seg.line.geometry.setDrawRange(0, Math.max(1, drawCount));
+            }
         }
     }
+
+    // Update Markers
+    markers.forEach(m => m.update());
 
     // cameraController.update(); // Handled internally now
     controls.update();
